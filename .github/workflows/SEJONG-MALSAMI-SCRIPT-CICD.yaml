@@ -24,7 +24,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           port: 2022
           password: ${{ secrets.SERVER_PASSWORD }}
-          source: "bin/**/*"
+          source: "bin/*"
           target: "/volume1/projects/sejong-malsami/bin"
         run: echo "bin 폴더가 서버에 성공적으로 업로드되었습니다."
 
