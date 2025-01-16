@@ -1,0 +1,43 @@
+name: SEJONG-MALSAMI-SCRIPT-CICD
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-20.04
+    steps:
+      # 1. 리포의 코드를 체크아웃
+      - name: 소스 코드 가져오기
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+        run: echo "소스 코드를 성공적으로 가져왔습니다."
+
+      # 2. 서버에 bin 폴더 업로드
+      - name: bin 폴더 업로드
+        uses: appleboy/scp-action@v0.1.1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: 2022
+          password: ${{ secrets.SERVER_PASSWORD }}
+          source: "bin/**/*"
+          target: "/volume1/projects/sejong-malsami/bin"
+        run: echo "bin 폴더가 서버에 성공적으로 업로드되었습니다."
+
+      # 3. SSH로 접속해 권한 설정
+      - name: 스크립트 실행 권한 설정
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: 2022
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            echo "=== 실행 권한 설정 시작 ==="
+            sudo chmod +x /volume1/projects/sejong-malsami/bin/*.sh
+            echo "=== 실행 권한 설정 완료 ==="
+            echo "스크립트가 실행 가능하도록 권한이 성공적으로 설정되었습니다."

@@ -1,0 +1,12 @@
+# .gitignore 예시
+
+# IDE 관련
+.idea/
+.vscode/
+
+# macOS
+.DS_Store
+
+# 기타 빌드 산출물
+*.log
+*.tmp
