@@ -46,8 +46,8 @@ jobs:
             echo "=== 환경 변수 설정 중 ==="
             export PATH=$PATH:/usr/local/bin
             export PW=${{ secrets.SERVER_PASSWORD }}
-            SEJONG_MALSAMI_DIR="${{ secrets.SEJONG_MALSAMI_DIR }}"
+            SEJONG_MALSAMI_BIN="${{ secrets.SEJONG_MALSAMI_DIR }}/bin"
 
             echo "=== 스크립트 실행 권한 설정 시작 ==="
-            echo $PW | sudo -S chmod +x SEJONG_MALSAMI_DIR/*.sh
+            echo $PW | sudo -S chmod +x ${SEJONG_MALSAMI_BIN}/*.sh
             echo "=== 스크립트 실행 권한 설정 완료 ==="
