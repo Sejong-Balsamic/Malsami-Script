@@ -27,7 +27,7 @@ jobs:
           port: 2022
           password: ${{ secrets.SERVER_PASSWORD }}
           source: "bin/*"
-          target: "${{ secrets.BIN_DIR }}"
+          target: "${{ secrets.SEJONG_MALSAMI_DIR }}"
 
       - name: bin 폴더 업로드 확인
         run: echo "bin 폴더가 서버에 성공적으로 업로드되었습니다."
@@ -46,8 +46,8 @@ jobs:
             echo "=== 환경 변수 설정 중 ==="
             export PATH=$PATH:/usr/local/bin
             export PW=${{ secrets.SERVER_PASSWORD }}
-            BIN_DIR="${{ secrets.BIN_DIR }}"
+            SEJONG_MALSAMI_DIR="${{ secrets.SEJONG_MALSAMI_DIR }}"
 
             echo "=== 스크립트 실행 권한 설정 시작 ==="
-            echo $PW | sudo -S chmod +x $BIN_DIR/*.sh
+            echo $PW | sudo -S chmod +x SEJONG_MALSAMI_DIR/*.sh
             echo "=== 스크립트 실행 권한 설정 완료 ==="
