@@ -9,7 +9,7 @@ jobs:
   deploy:
     runs-on: ubuntu-20.04
     steps:
-      # 1. 리포의 코드를 체크아웃
+      # 리포 코드 체크아웃
       - name: 소스 코드 가져오기
         uses: actions/checkout@v3
         with:
@@ -18,7 +18,7 @@ jobs:
       - name: 소스 코드 체크아웃 확인
         run: echo "소스 코드를 성공적으로 가져왔습니다."
 
-      # 2. 서버에 bin 폴더 업로드
+      # 서버 bin 폴더 업로드
       - name: bin 폴더 업로드
         uses: appleboy/scp-action@v0.1.1
         with:
@@ -27,12 +27,12 @@ jobs:
           port: 2022
           password: ${{ secrets.SERVER_PASSWORD }}
           source: "bin/*"
-          target: "/volume1/projects/sejong-malsami/"
+          target: "${{ secrets.BIN_DIR }}"
 
       - name: bin 폴더 업로드 확인
         run: echo "bin 폴더가 서버에 성공적으로 업로드되었습니다."
 
-      # 3. SSH로 접속해 권한 설정
+      # SSH 접속 -> 권한 설정
       - name: 스크립트 실행 권한 설정
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -41,6 +41,13 @@ jobs:
           port: 2022
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
-            echo "=== 실행 권한 설정 시작 ==="
-            sudo chmod +x /volume1/projects/sejong-malsami/bin/*.sh
-            echo "=== 실행 권한 설정 완료 ==="
+            set -e  # 에러 발생 시 스크립트 중단
+
+            echo "=== 환경 변수 설정 중 ==="
+            export PATH=$PATH:/usr/local/bin
+            export PW=${{ secrets.SERVER_PASSWORD }}
+            BIN_DIR="${{ secrets.BIN_DIR }}"
+
+            echo "=== 스크립트 실행 권한 설정 시작 ==="
+            echo $PW | sudo -S chmod +x $BIN_DIR/*.sh
+            echo "=== 스크립트 실행 권한 설정 완료 ==="
