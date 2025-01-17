@@ -53,6 +53,13 @@ jobs:
             export PATH=$PATH:/usr/local/bin
             SEJONG_MALSAMI_BIN="${{ secrets.SEJONG_MALSAMI_DIR }}/bin"
 
+            echo "=== .env 파일 존재 여부 확인 ==="
+            if [[ ! -f "${SEJONG_MALSAMI_BIN}/.env" ]]; then
+              echo "Error: .env 파일이 존재하지 않습니다."
+              exit 1
+            fi
+
             echo "=== 스크립트 실행 권한 설정 시작 ==="
-            sudo chmod +x ${SEJONG_MALSAMI_BIN}/*.sh
+            source ${SEJONG_MALSAMI_BIN}/.env
+            echo $PW | sudo -S chmod +x ${SEJONG_MALSAMI_BIN}/*.sh
             echo "=== 스크립트 실행 권한 설정 완료 ==="
