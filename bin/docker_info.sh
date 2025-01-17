@@ -1,153 +1,189 @@
 #!/bin/bash
 #
-# docker_info_json.sh - 시놀로지 환경에서 sudo docker를 사용하여
+# docker_info.sh - 시놀로지 환경에서 sudo docker를 사용하여
 #                       컨테이너/이미지 정보를 JSON 형태로 ONLY 출력하는 스크립트
 #
 # chkconfig: - 60 30
 # description: Docker info as JSON
 #
 
+set -euo pipefail
+IFS=$'\n\t'
+
 DOCKER_CMD="sudo docker"
 
-# --------------------------------------------------------------
-# 1) 컨테이너 정보 (docker inspect)
-#    - 반환: [ { ... } ] 형태의 JSON
-# --------------------------------------------------------------
+# jq가 설치되어 있는지 확인
+if ! command -v jq &> /dev/null; then
+    echo '{"error": "jq is not installed. Please install jq to use this script."}'
+    exit 1
+fi
+
+# Helper Functions
+
+# 에러 처리 함수
+error_exit() {
+    local message="$1"
+    echo "{\"error\": \"${message}\"}"
+    exit 1
+}
+
+# 컨테이너 존재 여부 확인
+validate_container() {
+    local container_name="$1"
+    if ! ${DOCKER_CMD} ps -a --format '{{.Names}}' | grep -wq "${container_name}"; then
+        error_exit "Container '${container_name}' does not exist."
+    fi
+}
+
+# 이미지 존재 여부 확인
+validate_image() {
+    local image_name="$1"
+    if ! ${DOCKER_CMD} images --format '{{.Repository}}:{{.Tag}}' | grep -wq "${image_name}"; then
+        error_exit "Image '${image_name}' does not exist."
+    fi
+}
+
+# 컨테이너 정보 (docker inspect <container_name> [OPTIONS])
 show_container_info() {
     local container_name="$1"
+    shift 1
+    local inspect_options=("$@")
+
     if [ -z "${container_name}" ]; then
-        # JSON 형식으로 오류 전달 시, 필요하다면 아래와 같이 처리 가능
-        echo '{"error": "No container name specified"}'
-        exit 1
+        error_exit "No container name specified."
     fi
 
-    # docker inspect -> 기본적으로 배열([]) 형태의 JSON 반환
-    # 컨테이너가 1개만 매칭되면 [ { ... } ]
-    # 여러 개 매칭되면 [ { ... }, { ... }, ... ]
-    ${DOCKER_CMD} inspect "${container_name}"
+    validate_container "${container_name}"
+
+    ${DOCKER_CMD} inspect "${inspect_options[@]}" "${container_name}" | jq '.[0]'
 }
 
-# --------------------------------------------------------------
-# 2) 이미지 정보 (docker inspect)
-#    - 반환: [ { ... } ] 형태의 JSON
-# --------------------------------------------------------------
+# 이미지 정보 (docker inspect <image_name> [OPTIONS])
 show_image_info() {
     local image_name="$1"
+    shift 1
+    local inspect_options=("$@")
+
     if [ -z "${image_name}" ]; then
-        echo '{"error": "No image name specified"}'
-        exit 1
+        error_exit "No image name specified."
     fi
 
-    ${DOCKER_CMD} inspect "${image_name}"
+    validate_image "${image_name}"
+
+    ${DOCKER_CMD} inspect "${inspect_options[@]}" "${image_name}" | jq '.[0]'
 }
 
-# --------------------------------------------------------------
-# 3) 모든 컨테이너 목록 (docker ps -a)
-#    - docker ps --format '{{json .}}' : 각 컨테이너를 JSON 오브젝트로 출력
-#    - 이를 JSON 배열로 감싸서 반환
-#    - 예) [ {"ID":"...","Image":"..."}, {"ID":"...","Image":"..."} ]
-# --------------------------------------------------------------
+# 모든 컨테이너 목록 (docker ps [OPTIONS])
 list_containers() {
-    containers=$(${DOCKER_CMD} ps -a --format='{{json .}}')
-
-    # JSON 배열 시작
-    echo -n '['
-
-    count=0
-    while IFS= read -r line; do
-        # 첫 번째가 아니면 앞에 콤마(,) 붙이기
-        if [ $count -gt 0 ]; then
-            echo -n ','
-        fi
-        echo -n "$line"
-        count=$((count+1))
-    done <<< "$containers"
-
-    # JSON 배열 종료
-    echo ']'
+    local ps_options=("$@")
+    ${DOCKER_CMD} ps "${ps_options[@]}" --format '{{json .}}' | jq -s .
 }
 
-# --------------------------------------------------------------
-# 4) 모든 이미지 목록 (docker images)
-#    - docker images --format '{{json .}}' : 각 이미지를 JSON 오브젝트로 출력
-#    - 이를 JSON 배열로 감싸서 반환
-# --------------------------------------------------------------
+# 모든 이미지 목록 (docker images [OPTIONS])
 list_images() {
-    images=$(${DOCKER_CMD} images --format='{{json .}}')
-
-    echo -n '['
-    count=0
-    while IFS= read -r line; do
-        if [ $count -gt 0 ]; then
-            echo -n ','
-        fi
-        echo -n "$line"
-        count=$((count+1))
-    done <<< "$images"
-    echo ']'
+    local images_options=("$@")
+    ${DOCKER_CMD} images "${images_options[@]}" --format '{{json .}}' | jq -s .
 }
 
-# --------------------------------------------------------------
-# 5) 컨테이너 로그 (docker logs)
-#    - 여러 줄이므로, 각 줄을 "JSON 배열"로 만들어 반환
-#    - 특수문자(쌍따옴표 등)는 간단 sed 치환
-# --------------------------------------------------------------
+# 컨테이너 로그 (docker logs <container_name> [OPTIONS])
 show_container_logs() {
     local container_name="$1"
+    shift 1
+    local log_options=("$@")
+
     if [ -z "${container_name}" ]; then
-        echo '{"error": "No container name specified for logs"}'
-        exit 1
+        error_exit "No container name specified for logs."
     fi
 
-    # 최근 100줄 로그 (필요시 변경)
-    logs=$(${DOCKER_CMD} logs --tail 100 "${container_name}" 2>&1)
+    validate_container "${container_name}"
 
-    # JSON 배열 시작
-    echo -n '['
-    count=0
-    while IFS= read -r line; do
-        # 쌍따옴표만 간단 이스케이프 처리 (필요시 다른 특수문자도 처리 가능)
-        escaped_line=$(echo "$line" | sed 's/"/\\"/g')
+    # 로그 명령어 실행
+    logs=$(${DOCKER_CMD} logs "${log_options[@]}" "${container_name}" 2>&1 || true)
 
-        if [ $count -gt 0 ]; then
-            echo -n ','
-        fi
-        # 한 줄을 JSON string으로
-        echo -n "\"${escaped_line}\""
-        count=$((count+1))
-    done <<< "$logs"
-    echo ']'
+    # 로그를 JSON 배열로 변환
+    echo "$logs" | jq -R -s -c 'split("\n") | map(select(length > 0))'
 }
 
-# --------------------------------------------------------------
-# 메인 로직 (SysV init 스타일)
-# --------------------------------------------------------------
-case "$1" in
-  container)
-    # Usage: ./docker_info_json.sh container <container_name>
-    show_container_info "$2"
-    ;;
-  image)
-    # Usage: ./docker_info_json.sh image <image_name>
-    show_image_info "$2"
-    ;;
-  ps)
-    # Usage: ./docker_info_json.sh ps
-    list_containers
-    ;;
-  images)
-    # Usage: ./docker_info_json.sh images
-    list_images
-    ;;
-  logs)
-    # Usage: ./docker_info_json.sh logs <container_name>
-    show_container_logs "$2"
-    ;;
-  *)
-    # 모든 에러/미매칭 사용법에 대해서도 JSON으로 반환
-    echo '{"error": "Invalid command. Use one of [container, image, ps, images, logs]."}'
-    exit 1
-    ;;
-esac
+# 시스템 정보 (docker info [OPTIONS])
+show_system_info() {
+    local info_options=("$@")
+    ${DOCKER_CMD} info "${info_options[@]}" --format '{{json .}}' | jq '.'
+}
+
+# 메인 로직
+main() {
+    if [ $# -lt 1 ]; then
+        error_exit "No command specified. Use one of [container, image, ps, images, logs, system]."
+    fi
+
+    case "$1" in
+        container)
+            if [ $# -lt 2 ]; then
+                error_exit "Usage: $0 container <container_name> [OPTIONS]"
+            fi
+            local container_name="$2"
+            shift 2
+            show_container_info "${container_name}" "$@"
+            ;;
+        image)
+            if [ $# -lt 2 ]; then
+                error_exit "Usage: $0 image <image_name> [OPTIONS]"
+            fi
+            local image_name="$2"
+            shift 2
+            show_image_info "${image_name}" "$@"
+            ;;
+        ps)
+            # 'ps'는 추가 옵션 없이도 사용 가능
+            shift 1
+            list_containers "$@"
+            ;;
+        images)
+            # 'images'는 추가 옵션 없이도 사용 가능
+            shift 1
+            list_images "$@"
+            ;;
+        logs)
+            if [ $# -lt 2 ]; then
+                error_exit "Usage: $0 logs <container_name> [OPTIONS]"
+            fi
+            local container_name="$2"
+            shift 2
+            show_container_logs "${container_name}" "$@"
+            ;;
+        system)
+            # 'system'은 추가 옵션 없이도 사용 가능
+            shift 1
+            show_system_info "$@"
+            ;;
+        help|-h|--help)
+            cat <<EOF
+Usage: $0 COMMAND [OPTIONS]
+
+Commands:
+  container <container_name> [OPTIONS]   Show detailed information of a specific container.
+  image <image_name> [OPTIONS]           Show detailed information of a specific image.
+  ps [OPTIONS]                           List containers with optional flags.
+  images [OPTIONS]                       List images with optional flags.
+  logs <container_name> [OPTIONS]        Show logs of a specific container with optional flags.
+  system [OPTIONS]                       Show Docker system-wide information with optional flags.
+  help                                   Show this help message.
+
+Examples:
+  $0 ps
+  $0 ps -a
+  $0 container my_container --format '{{.Name}}: {{.Status}}'
+  $0 logs my_container --tail 50
+  $0 logs my_container -f
+  $0 system
+EOF
+            ;;
+        *)
+            error_exit "Invalid command '${1}'. Use one of [container, image, ps, images, logs, system]."
+            ;;
+    esac
+}
+
+main "$@"
 
 exit 0
