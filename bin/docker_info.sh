@@ -2,15 +2,28 @@
 #
 # docker_info.sh - 시놀로지 환경에서 sudo docker를 사용하여
 #                       컨테이너/이미지 정보를 JSON 형태로 ONLY 출력하는 스크립트
-#
-# chkconfig: - 60 30
-# description: Docker info as JSON
-#
+# HISTORY
+# 2025.01.17 : SUHSAECHAN : PW 스크립트 추가
 
 set -euo pipefail
 IFS=$'\n\t'
 
-DOCKER_CMD="sudo docker"
+# .env 파일 유효성 확인
+if [[ ! -f ".env" ]]; then
+    echo '{"error": ".env file not found. Please create an .env file with the required variables."}'
+    exit 1
+fi
+
+# .env 파일 읽기
+source .env
+
+# PW 변수 확인
+if [[ -z "${PW:-}" ]]; then
+    echo '{"error": "PW is not set in the .env file. Please set PW to use this script."}'
+    exit 1
+fi
+
+DOCKER_CMD="echo $PW | sudo -S docker"
 
 # jq가 설치되어 있는지 확인
 if ! command -v jq &> /dev/null; then
@@ -30,7 +43,7 @@ error_exit() {
 # 컨테이너 존재 여부 확인
 validate_container() {
     local container_name="$1"
-    if ! ${DOCKER_CMD} ps -a --format '{{.Names}}' | grep -wq "${container_name}"; then
+    if ! $DOCKER_CMD ps -a --format '{{.Names}}' | grep -wq "${container_name}"; then
         error_exit "Container '${container_name}' does not exist."
     fi
 }
@@ -38,7 +51,7 @@ validate_container() {
 # 이미지 존재 여부 확인
 validate_image() {
     local image_name="$1"
-    if ! ${DOCKER_CMD} images --format '{{.Repository}}:{{.Tag}}' | grep -wq "${image_name}"; then
+    if ! $DOCKER_CMD images --format '{{.Repository}}:{{.Tag}}' | grep -wq "${image_name}"; then
         error_exit "Image '${image_name}' does not exist."
     fi
 }
@@ -55,7 +68,7 @@ show_container_info() {
 
     validate_container "${container_name}"
 
-    ${DOCKER_CMD} inspect "${inspect_options[@]}" "${container_name}" | jq '.[0]'
+    $DOCKER_CMD inspect "${inspect_options[@]}" "${container_name}" | jq '.[0]'
 }
 
 # 이미지 정보 (docker inspect <image_name> [OPTIONS])
@@ -70,19 +83,19 @@ show_image_info() {
 
     validate_image "${image_name}"
 
-    ${DOCKER_CMD} inspect "${inspect_options[@]}" "${image_name}" | jq '.[0]'
+    $DOCKER_CMD inspect "${inspect_options[@]}" "${image_name}" | jq '.[0]'
 }
 
 # 모든 컨테이너 목록 (docker ps [OPTIONS])
 list_containers() {
     local ps_options=("$@")
-    ${DOCKER_CMD} ps "${ps_options[@]}" --format '{{json .}}' | jq -s .
+    $DOCKER_CMD ps "${ps_options[@]}" --format '{{json .}}' | jq -s .
 }
 
 # 모든 이미지 목록 (docker images [OPTIONS])
 list_images() {
     local images_options=("$@")
-    ${DOCKER_CMD} images "${images_options[@]}" --format '{{json .}}' | jq -s .
+    $DOCKER_CMD images "${images_options[@]}" --format '{{json .}}' | jq -s .
 }
 
 # 컨테이너 로그 (docker logs <container_name> [OPTIONS])
@@ -98,7 +111,7 @@ show_container_logs() {
     validate_container "${container_name}"
 
     # 로그 명령어 실행
-    logs=$(${DOCKER_CMD} logs "${log_options[@]}" "${container_name}" 2>&1 || true)
+    logs=$($DOCKER_CMD logs "${log_options[@]}" "${container_name}" 2>&1 || true)
 
     # 로그를 JSON 배열로 변환
     echo "$logs" | jq -R -s -c 'split("\n") | map(select(length > 0))'
@@ -107,7 +120,7 @@ show_container_logs() {
 # 시스템 정보 (docker info [OPTIONS])
 show_system_info() {
     local info_options=("$@")
-    ${DOCKER_CMD} info "${info_options[@]}" --format '{{json .}}' | jq '.'
+    $DOCKER_CMD info "${info_options[@]}" --format '{{json .}}' | jq '.'
 }
 
 # 메인 로직
@@ -134,12 +147,10 @@ main() {
             show_image_info "${image_name}" "$@"
             ;;
         ps)
-            # 'ps'는 추가 옵션 없이도 사용 가능
             shift 1
             list_containers "$@"
             ;;
         images)
-            # 'images'는 추가 옵션 없이도 사용 가능
             shift 1
             list_images "$@"
             ;;
@@ -152,7 +163,6 @@ main() {
             show_container_logs "${container_name}" "$@"
             ;;
         system)
-            # 'system'은 추가 옵션 없이도 사용 가능
             shift 1
             show_system_info "$@"
             ;;
