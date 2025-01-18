@@ -8,22 +8,7 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# .env 파일 유효성 확인
-if [[ ! -f ".env" ]]; then
-    echo '{"error": ".env file not found. Please create an .env file with the required variables."}'
-    exit 1
-fi
-
-# .env 파일 읽기
-source .env
-
-# PW 변수 확인
-if [[ -z "${PW:-}" ]]; then
-    echo '{"error": "PW is not set in the .env file. Please set PW to use this script."}'
-    exit 1
-fi
-
-DOCKER_CMD="echo $PW | sudo -S docker"
+DOCKER_CMD="docker"
 
 # jq가 설치되어 있는지 확인
 if ! command -v jq &> /dev/null; then
